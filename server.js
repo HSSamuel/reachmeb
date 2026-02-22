@@ -2,16 +2,43 @@ require("dotenv").config();
 const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
+<<<<<<< HEAD
 const passport = require("passport"); // ✅ Added Passport import
+=======
+const passport = require("passport");
+const cookieParser = require("cookie-parser");
+>>>>>>> 62cbcd9 (Initial backend setup for ReachMe)
 
 // ✅ Load Passport Strategies so they are available globally
 require("./config/passport");
 
 const app = express();
 
+<<<<<<< HEAD
 // Middleware
 app.use(cors());
 app.use(express.json());
+=======
+// ✅ CRITICAL FIX FOR RENDER:
+// Render acts as a reverse proxy and handles HTTPS.
+// Without this, Express will silently refuse to set 'secure: true' cookies.
+app.set("trust proxy", 1);
+
+// Middleware
+app.use(
+  cors({
+    // Provide an array to guarantee your Netlify app and Localhost are always allowed
+    origin: [
+      process.env.FRONTEND_URL,
+      "https://reachme.netlify.app",
+      "http://localhost:5173",
+    ].filter(Boolean),
+    credentials: true, // ✅ Required for HttpOnly cookies
+  }),
+);
+app.use(express.json());
+app.use(cookieParser()); // ✅ Parse cookies for authentication
+>>>>>>> 62cbcd9 (Initial backend setup for ReachMe)
 app.use(passport.initialize()); // ✅ Initialize Passport middleware
 
 // Basic Health Check Route
@@ -30,7 +57,13 @@ app.use("/api/upload", require("./routes/upload"));
 // Global Error Handler
 app.use((err, req, res, next) => {
   console.error(err.stack);
+<<<<<<< HEAD
   res.status(500).json({ error: "Something went wrong!" });
+=======
+  res
+    .status(err.status || 500)
+    .json({ error: err.message || "Something went wrong!" });
+>>>>>>> 62cbcd9 (Initial backend setup for ReachMe)
 });
 
 // ✅ START SERVER ONLY AFTER MONGODB CONNECTS

@@ -48,6 +48,12 @@ const profileSchema = new mongoose.Schema(
     // SEO
     meta_title: { type: String, default: "" },
     meta_description: { type: String, default: "" },
+<<<<<<< HEAD
+=======
+
+    // Analytics
+    views: { type: Number, default: 0 },
+>>>>>>> 62cbcd9 (Initial backend setup for ReachMe)
   },
   { timestamps: true },
 );
