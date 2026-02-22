@@ -2,12 +2,17 @@ require("dotenv").config();
 const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
+const passport = require("passport"); // ✅ Added Passport import
+
+// ✅ Load Passport Strategies so they are available globally
+require("./config/passport");
 
 const app = express();
 
 // Middleware
 app.use(cors());
 app.use(express.json());
+app.use(passport.initialize()); // ✅ Initialize Passport middleware
 
 // Basic Health Check Route
 app.get("/", (req, res) => {
