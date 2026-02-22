@@ -16,8 +16,8 @@ const setTokenCookie = (res, userId) => {
 
   res.cookie("reachme_token", token, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production", // Secure in prod
-    sameSite: "lax",
+    secure: true, // ✅ MUST be true for cross-origin (Render -> Netlify)
+    sameSite: "none", // ✅ MUST be "none" for cross-origin (Render -> Netlify)
     maxAge: 7 * 24 * 60 * 60 * 1000, // 7 Days
   });
 };
@@ -112,7 +112,11 @@ router.post("/login", async (req, res, next) => {
 });
 
 router.post("/logout", (req, res) => {
-  res.clearCookie("reachme_token");
+  res.clearCookie("reachme_token", {
+    httpOnly: true,
+    secure: true,
+    sameSite: "none",
+  });
   res.json({ msg: "Logged out successfully" });
 });
 
