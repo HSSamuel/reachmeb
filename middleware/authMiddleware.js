@@ -2,13 +2,8 @@
 const jwt = require("jsonwebtoken");
 
 module.exports = function (req, res, next) {
-<<<<<<< HEAD
-  // Get token from the headers
-  const token = req.header("Authorization")?.split(" ")[1]; // Expecting "Bearer <token>"
-=======
   // Get token from the HttpOnly cookie
   const token = req.cookies?.reachme_token;
->>>>>>> 62cbcd9 (Initial backend setup for ReachMe)
 
   // Check if no token
   if (!token) {
