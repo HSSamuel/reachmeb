@@ -84,18 +84,18 @@ router.put("/reorder", authMiddleware, async (req, res) => {
 });
 
 // @route   PUT /api/links/:id
-// @desc    Update a specific link (Private)
-router.put("/:id", authMiddleware, async (req, res) => {
+// @desc    Update a specific link
+router.put('/:id', authMiddleware, async (req, res) => {
   try {
     const link = await Link.findByIdAndUpdate(
       req.params.id,
       { $set: req.body },
-      { new: true },
+      { returnDocument: 'after' } // ✅ Fixed deprecation warning
     );
     res.json(link);
   } catch (err) {
     console.error(err.message);
-    res.status(500).send("Server Error");
+    res.status(500).send('Server Error');
   }
 });
 

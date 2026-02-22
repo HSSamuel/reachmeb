@@ -18,24 +18,23 @@ router.get("/me", authMiddleware, async (req, res) => {
 });
 
 // @route   PUT /api/profiles/me
-// @desc    Update current user's profile (Private - for Editor/Settings)
-router.put("/me", authMiddleware, async (req, res) => {
+// @desc    Update current user's profile
+router.put('/me', authMiddleware, async (req, res) => {
   try {
-    // req.body contains the updates (e.g., bio, theme_color, etc.)
     const profile = await Profile.findOneAndUpdate(
       { user_id: req.user.id },
       { $set: req.body },
-      { new: true }, // Return the updated document
+      { returnDocument: 'after' } // ✅ Fixed deprecation warning
     );
-
-    if (!profile) return res.status(404).json({ error: "Profile not found" });
+    
+    if (!profile) return res.status(404).json({ error: 'Profile not found' });
     res.json(profile);
   } catch (err) {
     console.error(err.message);
     if (err.code === 11000) {
-      return res.status(400).json({ error: "Username is already taken" });
+      return res.status(400).json({ error: 'Username is already taken' });
     }
-    res.status(500).send("Server Error");
+    res.status(500).send('Server Error');
   }
 });
 

@@ -60,18 +60,18 @@ router.post("/", authMiddleware, async (req, res) => {
 });
 
 // @route   PUT /api/products/:id
-// @desc    Update a product (Private)
-router.put("/:id", authMiddleware, async (req, res) => {
+// @desc    Update a product
+router.put('/:id', authMiddleware, async (req, res) => {
   try {
     const product = await Product.findByIdAndUpdate(
       req.params.id,
       { $set: req.body },
-      { new: true },
+      { returnDocument: 'after' } // ✅ Fixed deprecation warning
     );
     res.json(product);
   } catch (err) {
     console.error(err.message);
-    res.status(500).send("Server Error");
+    res.status(500).send('Server Error');
   }
 });
 
