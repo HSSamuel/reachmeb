@@ -44,7 +44,7 @@ router.get("/:username", async (req, res, next) => {
     const profile = await Profile.findOneAndUpdate(
       { username: req.params.username },
       { $inc: { views: 1 } },
-      { new: true },
+      { returnDocument: "after" }
     );
     if (!profile) return res.status(404).json({ error: "Profile not found" });
     res.json(profile);
