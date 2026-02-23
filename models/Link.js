@@ -14,7 +14,11 @@ const linkSchema = new mongoose.Schema(
     is_active: { type: Boolean, default: true },
     sort_order: { type: Number, default: 0 },
     clicks: { type: Number, default: 0 },
-    gate_code: { type: String, default: null }, // For locked links
+    gate_code: { type: String, default: null },
+
+    // ✅ NEW: Auto-Sync RSS Fields
+    is_dynamic: { type: Boolean, default: false },
+    rss_url: { type: String, default: "" },
   },
   { timestamps: true },
 );

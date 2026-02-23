@@ -17,8 +17,18 @@ cloudinary.config({
 const storage = new CloudinaryStorage({
   cloudinary: cloudinary,
   params: {
-    folder: "reachme_uploads", // The folder name in your Cloudinary account
-    allowed_formats: ["jpg", "png", "jpeg", "webp", "gif"],
+    folder: "reachme_uploads",
+    resource_type: "auto", // ✅ CRITICAL: Allows both images and videos (mp4, webm)
+    allowed_formats: [
+      "jpg",
+      "png",
+      "jpeg",
+      "webp",
+      "gif",
+      "mp4",
+      "webm",
+      "mov",
+    ],
   },
 });
 

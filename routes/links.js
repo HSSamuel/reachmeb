@@ -5,6 +5,8 @@ const Link = require("../models/Link");
 const Profile = require("../models/Profile");
 const authMiddleware = require("../middleware/authMiddleware");
 const rateLimit = require("express-rate-limit");
+const Parser = require("rss-parser");
+const parser = new Parser();
 
 // Prevent spamming clicks
 const clickLimiter = rateLimit({
@@ -72,6 +74,27 @@ router.post("/:id/unlock", async (req, res, next) => {
     res.json({ url: link.url });
   } catch (err) {
     next(err);
+  }
+});
+
+// ✅ Trigger Auto-Sync for a Link
+router.post("/:id/sync", authMiddleware, async (req, res, next) => {
+  try {
+    const link = await Link.findById(req.params.id);
+    if (!link) return res.status(404).json({ error: "Link not found" });
+    if (!link.is_dynamic || !link.rss_url) return res.status(400).json({ error: "Not a dynamic link" });
+
+    const feed = await parser.parseURL(link.rss_url);
+    if (feed.items && feed.items.length > 0) {
+      const latestItem = feed.items[0];
+      link.title = latestItem.title || link.title;
+      link.url = latestItem.link || link.url;
+      await link.save();
+    }
+    res.json(link);
+  } catch (err) {
+    console.error("RSS Sync Error:", err);
+    res.status(500).json({ error: "Failed to sync feed. Ensure the URL is a valid RSS/XML feed." });
   }
 });
 

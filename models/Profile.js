@@ -13,6 +13,7 @@ const profileSchema = new mongoose.Schema(
     full_name: { type: String, default: "" },
     bio: { type: String, default: "" },
     avatar_url: { type: String, default: "" },
+    story_video_url: { type: String, default: "" },
 
     // Theme & Appearance
     is_public: { type: Boolean, default: true },
