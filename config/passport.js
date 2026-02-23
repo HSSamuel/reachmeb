@@ -15,10 +15,18 @@ passport.use(
     },
     async (accessToken, refreshToken, profile, done) => {
       try {
-        let user = await User.findOne({ email: profile.emails[0].value });
+        // ✅ BUG FIX: Safely extract email and photo using Optional Chaining (?.)
+        const email = profile.emails?.[0]?.value;
+        const avatarUrl = profile.photos?.[0]?.value || "";
+
+        if (!email) {
+          return done(new Error("No email found from Google account."), null);
+        }
+
+        let user = await User.findOne({ email: email });
         if (!user) {
           user = new User({
-            email: profile.emails[0].value,
+            email: email,
             authProvider: "google",
           });
           await user.save();
@@ -29,7 +37,7 @@ passport.use(
               profile.displayName.replace(/\s+/g, "").toLowerCase() +
               Math.floor(Math.random() * 1000),
             full_name: profile.displayName,
-            avatar_url: profile.photos[0].value,
+            avatar_url: avatarUrl,
           });
           await newProfile.save();
         }
@@ -52,10 +60,17 @@ passport.use(
     },
     async (accessToken, refreshToken, profile, done) => {
       try {
-        let user = await User.findOne({ email: profile.emails[0].value });
+        // ✅ BUG FIX: Safely extract email. If private, use a fallback dummy email so DB doesn't crash
+        const email =
+          profile.emails?.[0]?.value || `${profile.username}@github.user`;
+
+        // ✅ BUG FIX: Safely extract photo
+        const avatarUrl = profile.photos?.[0]?.value || "";
+
+        let user = await User.findOne({ email: email });
         if (!user) {
           user = new User({
-            email: profile.emails[0].value,
+            email: email,
             authProvider: "github",
           });
           await user.save();
@@ -64,7 +79,7 @@ passport.use(
             user_id: user._id,
             username: profile.username.toLowerCase(),
             full_name: profile.displayName || profile.username,
-            avatar_url: profile.photos[0].value,
+            avatar_url: avatarUrl,
           });
           await newProfile.save();
         }
