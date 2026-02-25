@@ -23,4 +23,7 @@ const linkSchema = new mongoose.Schema(
   { timestamps: true },
 );
 
+// ✅ PERFORMANCE FIX: Compound Indexing for faster reads and sorting
+linkSchema.index({ profile_id: 1, sort_order: 1 });
+
 module.exports = mongoose.model("Link", linkSchema);

@@ -40,14 +40,20 @@ router.put("/me", authMiddleware, async (req, res, next) => {
 // @desc    Get profile by username (Public - for public page)
 router.get("/:username", async (req, res, next) => {
   try {
-    // ✅ Track actual views by incrementing automatically on fetch
-    const profile = await Profile.findOneAndUpdate(
-      { username: req.params.username },
-      { $inc: { views: 1 } },
-      { returnDocument: "after" }
-    );
+    const profile = await Profile.findOne({ username: req.params.username });
+    
     if (!profile) return res.status(404).json({ error: "Profile not found" });
-    res.json(profile);
+
+    // ✅ PERFORMANCE FIX: Asynchronously update views without blocking the read request
+    Profile.updateOne({ _id: profile._id }, { $inc: { views: 1 } }).catch(
+      (err) => console.error("Failed to update views:", err)
+    );
+
+    // Manually increment the view count on the returned object so the frontend gets the latest number instantly
+    const profileResponse = profile.toObject();
+    profileResponse.views += 1;
+
+    res.json(profileResponse);
   } catch (err) {
     next(err);
   }

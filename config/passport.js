@@ -4,6 +4,27 @@ const GitHubStrategy = require("passport-github2").Strategy;
 const User = require("../models/User");
 const Profile = require("../models/Profile");
 
+// Helper to ensure unique usernames during OAuth
+async function generateUniqueUsername(displayName) {
+  let baseName = displayName.replace(/\s+/g, "").toLowerCase();
+  // Strip non-alphanumeric characters
+  baseName = baseName.replace(/[^a-z0-9]/g, "");
+  if (!baseName) baseName = "user";
+
+  let username = baseName;
+  let isUnique = false;
+
+  while (!isUnique) {
+    const existingProfile = await Profile.findOne({ username });
+    if (!existingProfile) {
+      isUnique = true;
+    } else {
+      username = baseName + Math.floor(Math.random() * 10000);
+    }
+  }
+  return username;
+}
+
 // Google Strategy
 passport.use(
   new GoogleStrategy(
@@ -31,11 +52,11 @@ passport.use(
           });
           await user.save();
 
+          const uniqueUsername = await generateUniqueUsername(profile.displayName);
+
           const newProfile = new Profile({
             user_id: user._id,
-            username:
-              profile.displayName.replace(/\s+/g, "").toLowerCase() +
-              Math.floor(Math.random() * 1000),
+            username: uniqueUsername,
             full_name: profile.displayName,
             avatar_url: avatarUrl,
           });
@@ -75,9 +96,11 @@ passport.use(
           });
           await user.save();
 
+          const uniqueUsername = await generateUniqueUsername(profile.username || profile.displayName);
+
           const newProfile = new Profile({
             user_id: user._id,
-            username: profile.username.toLowerCase(),
+            username: uniqueUsername,
             full_name: profile.displayName || profile.username,
             avatar_url: avatarUrl,
           });
