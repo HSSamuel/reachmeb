@@ -10,23 +10,21 @@ const parser = new Parser();
 
 // Prevent spamming clicks
 const clickLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 10, // Limit each IP to 10 clicks per link per window
+  windowMs: 15 * 60 * 1000,
+  max: 10,
   message: { error: "Too many requests from this IP, please try again later." },
 });
 
-// --- ✨ NEW: IN-MEMORY CLICK BATCHER ---
 // Prevents database race conditions during viral traffic spikes
 const clickBatch = new Map();
 
-setInterval(async () => {
+// ✅ PERFORMANCE: Extracted flush logic to allow graceful shutdown
+const flushClicks = async () => {
   if (clickBatch.size === 0) return;
-  
-  // Clone and clear the current batch
+
   const batch = new Map(clickBatch);
   clickBatch.clear();
 
-  // Flush to database
   for (const [id, clicks] of batch.entries()) {
     try {
       await Link.findByIdAndUpdate(id, { $inc: { clicks: clicks } });
@@ -34,15 +32,15 @@ setInterval(async () => {
       console.error(`Failed to flush clicks for link ${id}:`, err);
     }
   }
-}, 30000); // Flush clicks to MongoDB every 30 seconds
+};
 
-// Helper function to get profile_id from user_id
+setInterval(flushClicks, 30000);
+
 const getProfileId = async (userId) => {
   const profile = await Profile.findOne({ user_id: userId });
   return profile ? profile._id : null;
 };
 
-// @route   GET /api/links
 router.get("/", authMiddleware, async (req, res, next) => {
   try {
     const profileId = await getProfileId(req.user.id);
@@ -55,7 +53,6 @@ router.get("/", authMiddleware, async (req, res, next) => {
   }
 });
 
-// @route   GET /api/links/public/:profileId
 router.get("/public/:profileId", async (req, res, next) => {
   try {
     const links = await Link.find({
@@ -78,7 +75,6 @@ router.get("/public/:profileId", async (req, res, next) => {
   }
 });
 
-// @route   POST /api/links/:id/unlock
 router.post("/:id/unlock", async (req, res, next) => {
   try {
     const { pin } = req.body;
@@ -94,12 +90,12 @@ router.post("/:id/unlock", async (req, res, next) => {
   }
 });
 
-// @route   POST /api/links/:id/sync
 router.post("/:id/sync", authMiddleware, async (req, res, next) => {
   try {
     const link = await Link.findById(req.params.id);
     if (!link) return res.status(404).json({ error: "Link not found" });
-    if (!link.is_dynamic || !link.rss_url) return res.status(400).json({ error: "Not a dynamic link" });
+    if (!link.is_dynamic || !link.rss_url)
+      return res.status(400).json({ error: "Not a dynamic link" });
 
     const feed = await parser.parseURL(link.rss_url);
     if (feed.items && feed.items.length > 0) {
@@ -111,11 +107,14 @@ router.post("/:id/sync", authMiddleware, async (req, res, next) => {
     res.json(link);
   } catch (err) {
     console.error("RSS Sync Error:", err);
-    res.status(500).json({ error: "Failed to sync feed. Ensure the URL is a valid RSS/XML feed." });
+    res
+      .status(500)
+      .json({
+        error: "Failed to sync feed. Ensure the URL is a valid RSS/XML feed.",
+      });
   }
 });
 
-// @route   POST /api/links
 router.post("/", authMiddleware, async (req, res, next) => {
   try {
     const profileId = await getProfileId(req.user.id);
@@ -127,7 +126,6 @@ router.post("/", authMiddleware, async (req, res, next) => {
   }
 });
 
-// @route   PUT /api/links/reorder
 router.put("/reorder", authMiddleware, async (req, res, next) => {
   try {
     const { updates } = req.body;
@@ -144,7 +142,6 @@ router.put("/reorder", authMiddleware, async (req, res, next) => {
   }
 });
 
-// @route   PUT /api/links/:id
 router.put("/:id", authMiddleware, async (req, res, next) => {
   try {
     const link = await Link.findByIdAndUpdate(
@@ -158,14 +155,11 @@ router.put("/:id", authMiddleware, async (req, res, next) => {
   }
 });
 
-// @route   DELETE /api/links/:id
-// ✨ FIX: Delete orphaned thumbnail images from Cloudinary
 router.delete("/:id", authMiddleware, async (req, res, next) => {
   try {
     const link = await Link.findById(req.params.id);
     if (!link) return res.status(404).json({ error: "Link not found" });
 
-    // Cleanup Cloudinary file if it exists
     if (link.thumbnail_url) {
       await deleteCloudinaryFile(link.thumbnail_url);
     }
@@ -177,12 +171,9 @@ router.delete("/:id", authMiddleware, async (req, res, next) => {
   }
 });
 
-// @route   POST /api/links/:id/click
-// ✨ FIX: Added to Batcher instead of awaiting DB directly
 router.post("/:id/click", clickLimiter, async (req, res, next) => {
   try {
     const id = req.params.id;
-    // Add click to in-memory batch map
     clickBatch.set(id, (clickBatch.get(id) || 0) + 1);
     res.json({ msg: "Click registered in queue" });
   } catch (err) {
@@ -191,3 +182,5 @@ router.post("/:id/click", clickLimiter, async (req, res, next) => {
 });
 
 module.exports = router;
+// Attach to router object so it can be called from server.js
+module.exports.flushClicks = flushClicks;

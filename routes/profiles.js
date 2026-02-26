@@ -1,11 +1,8 @@
-// reachme-backend/routes/profiles.js
 const express = require("express");
 const router = express.Router();
 const Profile = require("../models/Profile");
 const authMiddleware = require("../middleware/authMiddleware");
 
-// @route   GET /api/profiles/me
-// @desc    Get current user's profile (Private - for Dashboard)
 router.get("/me", authMiddleware, async (req, res, next) => {
   try {
     const profile = await Profile.findOne({ user_id: req.user.id });
@@ -16,14 +13,12 @@ router.get("/me", authMiddleware, async (req, res, next) => {
   }
 });
 
-// @route   PUT /api/profiles/me
-// @desc    Update current user's profile
 router.put("/me", authMiddleware, async (req, res, next) => {
   try {
     const profile = await Profile.findOneAndUpdate(
       { user_id: req.user.id },
       { $set: req.body },
-      { returnDocument: "after" }, // ✅ Fixed deprecation warning
+      { returnDocument: "after" },
     );
 
     if (!profile) return res.status(404).json({ error: "Profile not found" });
@@ -36,33 +31,31 @@ router.put("/me", authMiddleware, async (req, res, next) => {
   }
 });
 
-// @route   GET /api/profiles/:username
-// @desc    Get profile, active links, and active products in one request
 router.get("/:username", async (req, res, next) => {
   try {
-    const profile = await Profile.findOne({ username: req.params.username });
-    
+    // ✅ SECURITY FIX: Strip out 'user_id' so it's not exposed to the public
+    const profile = await Profile.findOne({
+      username: req.params.username,
+    }).select("-user_id");
+
     if (!profile) return res.status(404).json({ error: "Profile not found" });
 
-    // Asynchronously update views
     Profile.updateOne({ _id: profile._id }, { $inc: { views: 1 } }).catch(
-      (err) => console.error("Failed to update views:", err)
+      (err) => console.error("Failed to update views:", err),
     );
 
-    // Fetch Links and Products in parallel on the server (much faster)
     const Link = require("../models/Link");
     const Product = require("../models/Product");
 
     const [links, products] = await Promise.all([
       Link.find({ profile_id: profile._id, is_active: true })
-          .sort({ sort_order: 1 })
-          .lean(),
+        .sort({ sort_order: 1 })
+        .lean(),
       Product.find({ profile_id: profile._id, is_active: true })
-             .sort({ sort_order: 1 })
-             .lean()
+        .sort({ sort_order: 1 })
+        .lean(),
     ]);
 
-    // Scrub locked links (keep PIN protection safe)
     const safeLinks = links.map((link) => {
       if (link.gate_code) {
         return { ...link, url: null, gate_code: true, is_locked: true };
@@ -73,11 +66,10 @@ router.get("/:username", async (req, res, next) => {
     const profileResponse = profile.toObject();
     profileResponse.views += 1;
 
-    // Return everything in one single JSON payload
     res.json({
       profile: profileResponse,
       links: safeLinks,
-      products: products
+      products: products,
     });
   } catch (err) {
     next(err);

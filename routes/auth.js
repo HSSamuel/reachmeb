@@ -3,22 +3,33 @@ const router = express.Router();
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const passport = require("passport");
-require("../config/passport"); // Initialize strategies
+const rateLimit = require("express-rate-limit");
+require("../config/passport");
 
 const User = require("../models/User");
 const Profile = require("../models/Profile");
 const authMiddleware = require("../middleware/authMiddleware");
 
+// ✅ SECURITY: Rate limiter for registration and login
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 20, // limit each IP to 20 requests per windowMs
+  message: { error: "Too many attempts, please try again after 15 minutes." },
+});
+
 // Helper function to set HttpOnly Cookie
 const setTokenCookie = (res, userId) => {
   const payload = { user: { id: userId } };
   const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: "7d" });
+  
+  // ✅ FIX: Allow cookies over HTTP for local development, enforce secure over HTTPS for prod
+  const isProduction = process.env.NODE_ENV === "production";
 
   res.cookie("reachme_token", token, {
     httpOnly: true,
-    secure: true, // ✅ MUST be true for cross-origin (Render -> Netlify)
-    sameSite: "none", // ✅ MUST be "none" for cross-origin (Render -> Netlify)
-    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 Days
+    secure: isProduction, 
+    sameSite: isProduction ? "none" : "lax", 
+    maxAge: 7 * 24 * 60 * 60 * 1000, 
   });
 };
 
@@ -56,11 +67,10 @@ router.get(
 
 // --- EXISTING EMAIL ROUTES ---
 
-router.post("/register", async (req, res, next) => {
+router.post("/register", authLimiter, async (req, res, next) => {
   try {
     const { email, password, full_name, username } = req.body;
 
-    // Validation
     if (!email || !password) {
       return res.status(400).json({ error: "Email and password are required" });
     }
@@ -68,7 +78,6 @@ router.post("/register", async (req, res, next) => {
     let user = await User.findOne({ email });
     if (user) return res.status(400).json({ error: "User already exists" });
 
-    // Safe username generation
     const finalUsername =
       username || email.split("@")[0] + Math.floor(Math.random() * 1000);
 
@@ -83,7 +92,7 @@ router.post("/register", async (req, res, next) => {
 
     const profile = new Profile({
       user_id: user._id,
-      username: finalUsername.toLowerCase().replace(/[^a-z0-9-]/g, ""), // Sanitize
+      username: finalUsername.toLowerCase().replace(/[^a-z0-9-]/g, ""),
       full_name: full_name || "",
     });
     await profile.save();
@@ -95,7 +104,7 @@ router.post("/register", async (req, res, next) => {
   }
 });
 
-router.post("/login", async (req, res, next) => {
+router.post("/login", authLimiter, async (req, res, next) => {
   try {
     const { email, password } = req.body;
     let user = await User.findOne({ email });
@@ -112,10 +121,11 @@ router.post("/login", async (req, res, next) => {
 });
 
 router.post("/logout", (req, res) => {
+  const isProduction = process.env.NODE_ENV === "production";
   res.clearCookie("reachme_token", {
     httpOnly: true,
-    secure: true,
-    sameSite: "none",
+    secure: isProduction,
+    sameSite: isProduction ? "none" : "lax",
   });
   res.json({ msg: "Logged out successfully" });
 });
