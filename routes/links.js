@@ -1,4 +1,3 @@
-// reachme-backend/routes/links.js
 const express = require("express");
 const router = express.Router();
 const Link = require("../models/Link");
@@ -6,6 +5,7 @@ const Profile = require("../models/Profile");
 const authMiddleware = require("../middleware/authMiddleware");
 const rateLimit = require("express-rate-limit");
 const Parser = require("rss-parser");
+const { deleteCloudinaryFile } = require("../utils/cloudinaryHelper");
 const parser = new Parser();
 
 // Prevent spamming clicks
@@ -15,6 +15,27 @@ const clickLimiter = rateLimit({
   message: { error: "Too many requests from this IP, please try again later." },
 });
 
+// --- ✨ NEW: IN-MEMORY CLICK BATCHER ---
+// Prevents database race conditions during viral traffic spikes
+const clickBatch = new Map();
+
+setInterval(async () => {
+  if (clickBatch.size === 0) return;
+  
+  // Clone and clear the current batch
+  const batch = new Map(clickBatch);
+  clickBatch.clear();
+
+  // Flush to database
+  for (const [id, clicks] of batch.entries()) {
+    try {
+      await Link.findByIdAndUpdate(id, { $inc: { clicks: clicks } });
+    } catch (err) {
+      console.error(`Failed to flush clicks for link ${id}:`, err);
+    }
+  }
+}, 30000); // Flush clicks to MongoDB every 30 seconds
+
 // Helper function to get profile_id from user_id
 const getProfileId = async (userId) => {
   const profile = await Profile.findOne({ user_id: userId });
@@ -22,7 +43,6 @@ const getProfileId = async (userId) => {
 };
 
 // @route   GET /api/links
-// @desc    Get all links for logged-in user (Private)
 router.get("/", authMiddleware, async (req, res, next) => {
   try {
     const profileId = await getProfileId(req.user.id);
@@ -36,7 +56,6 @@ router.get("/", authMiddleware, async (req, res, next) => {
 });
 
 // @route   GET /api/links/public/:profileId
-// @desc    Get all ACTIVE links for a public profile (Public - Scrubbed)
 router.get("/public/:profileId", async (req, res, next) => {
   try {
     const links = await Link.find({
@@ -46,7 +65,6 @@ router.get("/public/:profileId", async (req, res, next) => {
       .sort({ sort_order: 1 })
       .lean();
 
-    // ✅ VULNERABILITY FIX: Hide URL and PIN from the public payload
     const safeLinks = links.map((link) => {
       if (link.gate_code) {
         return { ...link, url: null, gate_code: true, is_locked: true };
@@ -61,7 +79,6 @@ router.get("/public/:profileId", async (req, res, next) => {
 });
 
 // @route   POST /api/links/:id/unlock
-// @desc    Verify PIN to retrieve hidden URL
 router.post("/:id/unlock", async (req, res, next) => {
   try {
     const { pin } = req.body;
@@ -77,7 +94,7 @@ router.post("/:id/unlock", async (req, res, next) => {
   }
 });
 
-// ✅ Trigger Auto-Sync for a Link
+// @route   POST /api/links/:id/sync
 router.post("/:id/sync", authMiddleware, async (req, res, next) => {
   try {
     const link = await Link.findById(req.params.id);
@@ -99,16 +116,10 @@ router.post("/:id/sync", authMiddleware, async (req, res, next) => {
 });
 
 // @route   POST /api/links
-// @desc    Create a new link (Private)
 router.post("/", authMiddleware, async (req, res, next) => {
   try {
     const profileId = await getProfileId(req.user.id);
-
-    const newLink = new Link({
-      ...req.body,
-      profile_id: profileId,
-    });
-
+    const newLink = new Link({ ...req.body, profile_id: profileId });
     const link = await newLink.save();
     res.json(link);
   } catch (err) {
@@ -117,18 +128,15 @@ router.post("/", authMiddleware, async (req, res, next) => {
 });
 
 // @route   PUT /api/links/reorder
-// @desc    Update sort_order for multiple links (Private)
 router.put("/reorder", authMiddleware, async (req, res, next) => {
   try {
     const { updates } = req.body;
-
     const bulkOps = updates.map((update) => ({
       updateOne: {
         filter: { _id: update.id },
         update: { $set: { sort_order: update.sort_order } },
       },
     }));
-
     await Link.bulkWrite(bulkOps);
     res.json({ msg: "Reordered successfully" });
   } catch (err) {
@@ -137,7 +145,6 @@ router.put("/reorder", authMiddleware, async (req, res, next) => {
 });
 
 // @route   PUT /api/links/:id
-// @desc    Update a specific link
 router.put("/:id", authMiddleware, async (req, res, next) => {
   try {
     const link = await Link.findByIdAndUpdate(
@@ -152,9 +159,17 @@ router.put("/:id", authMiddleware, async (req, res, next) => {
 });
 
 // @route   DELETE /api/links/:id
-// @desc    Delete a link (Private)
+// ✨ FIX: Delete orphaned thumbnail images from Cloudinary
 router.delete("/:id", authMiddleware, async (req, res, next) => {
   try {
+    const link = await Link.findById(req.params.id);
+    if (!link) return res.status(404).json({ error: "Link not found" });
+
+    // Cleanup Cloudinary file if it exists
+    if (link.thumbnail_url) {
+      await deleteCloudinaryFile(link.thumbnail_url);
+    }
+
     await Link.findByIdAndDelete(req.params.id);
     res.json({ msg: "Link removed" });
   } catch (err) {
@@ -163,11 +178,13 @@ router.delete("/:id", authMiddleware, async (req, res, next) => {
 });
 
 // @route   POST /api/links/:id/click
-// @desc    Increment click counter (Public)
+// ✨ FIX: Added to Batcher instead of awaiting DB directly
 router.post("/:id/click", clickLimiter, async (req, res, next) => {
   try {
-    await Link.findByIdAndUpdate(req.params.id, { $inc: { clicks: 1 } });
-    res.json({ msg: "Click registered" });
+    const id = req.params.id;
+    // Add click to in-memory batch map
+    clickBatch.set(id, (clickBatch.get(id) || 0) + 1);
+    res.json({ msg: "Click registered in queue" });
   } catch (err) {
     next(err);
   }
