@@ -11,6 +11,7 @@ const profileSchema = new mongoose.Schema(
     },
     username: { type: String, required: true, unique: true, lowercase: true },
     full_name: { type: String, default: "" },
+    profile_title: { type: String, default: "" },
     bio: { type: String, default: "" },
     avatar_url: { type: String, default: "" },
     story_video_url: { type: String, default: "" },
